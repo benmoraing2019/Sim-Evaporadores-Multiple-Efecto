@@ -1,0 +1,1 @@
+# Ecuaciones a ocupar en el evaporador
