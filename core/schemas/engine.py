@@ -30,7 +30,8 @@ class Composicion:
     """Gestiona composición y modelo de la sustancia a simular."""
     sustancias: List[str]
     fraccion_masa: List[float]
-    metodo: str
+    metodo: str = "UNIFAC"
+    inchi_keys: Optional[List[str]] = None
 
     def validar(self):
         """Validación útil para evitar errores numéricos en SciPy."""
