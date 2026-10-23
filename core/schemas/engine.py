@@ -3,12 +3,30 @@ Clases que modelan y estructuran los datos internos del modelo
 """
 
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import List, Optional, Any, Dict
 import networkx as nx
 import numpy as np
 
 
 Array = np.ndarray
+
+
+class Fase(str, Enum):
+    """Estado de agregación de una corriente."""
+    LIQUIDO = "LIQUIDO"
+    VAPOR = "VAPOR"
+    BIFASICO = "BIFASICO"
+
+
+# Convención de puertos de un evaporador (lado proceso + lado calefacción).
+PUERTOS_EVAPORADOR: List[str] = [
+    "alimentacion",   # entrada de líquido a concentrar (proceso)
+    "liquido",        # salida de concentrado (fondo, proceso)
+    "vapor",          # salida de vapor (tope, proceso) -> puede ir a otro efecto
+    "steam",          # entrada de vapor de calefacción (lado tubos)
+    "condensado",     # salida de condensado (lado tubos, tras trampa de vapor)
+]
 
 
 
@@ -49,9 +67,10 @@ class Corriente:
     """
     nombre: str
     composicion: Composicion
-    temperatura: float  # K o °C
-    presion: float      # Pa o bar
+    temperatura: float  # K
+    presion: float      # Pa
     flujo_masico: float # kg/s
+    fase: Fase = Fase.LIQUIDO  # estado de agregación (necesario para enrutar vapor vs líquido)
 
 @dataclass
 class IntercambiadorCalor(Equipo):
@@ -62,16 +81,40 @@ class IntercambiadorCalor(Equipo):
 @dataclass
 class Evaporador(Equipo):
     """
-    Modelo de equipo unitario (Nodo). 
-    Nota que ya no lleva objetos 'Corriente' fijos adentro; 
-    las corrientes viven en las aristas del grafo que conectan este nodo.
+    Modelo de equipo unitario (Nodo).
+
+    Las corrientes viven en las aristas del grafo; este nodo solo define el
+    estado del equipo. Puertos esperados (ver PUERTOS_EVAPORADOR):
+
+      * alimentacion -> entrada de líquido de proceso
+      * liquido      -> salida de concentrado (fondo)
+      * vapor        -> salida de vapor (tope)
+      * steam        -> entrada de vapor de calefacción (lado tubos)
+      * condensado   -> salida de condensado (lado tubos)
     """
     # Variables de estado o diseño del equipo
     temperatura: float
     presion: float
-    masa_holgura: float  # Holduro de líquido en el evaporador
+    masa_holgura: float  # Holdup de líquido en el evaporador
     composicion: Composicion
     intercambiador: Optional[IntercambiadorCalor] = None
+
+@dataclass
+class Fuente(Equipo):
+    """
+    Nodo de frontera: suministra una corriente (alimentación de proceso o
+    servicio de vapor). No tiene ecuaciones de conservación; es una condición
+    de borde cuyo flujo/T/P/composición vienen dados en la arista saliente.
+    """
+    nombres_puertos: List[str] = field(default_factory=lambda: ["salida"])
+
+@dataclass
+class Purga(Equipo):
+    """
+    Nodo de frontera: absorbe una corriente (producto concentrado, condensado,
+    venteo). No tiene ecuaciones de conservación; es un sumidero.
+    """
+    nombres_puertos: List[str] = field(default_factory=lambda: ["entrada"])
 
 @dataclass
 class Valvula(Equipo):
@@ -95,7 +138,9 @@ class EspecificacionConexion:
 class SistemaEvaporacionGraph:
     def __init__(self, nombre:str):
         self.name = nombre
-        self.graph = nx.DiGraph()
+        # MultiDiGraph: permite aristas paralelas entre el mismo par de nodos,
+        # necesario para conectar, p.ej., líquido Y vapor entre dos efectos.
+        self.graph = nx.MultiDiGraph()
         pass
 
     def agregar_equipo(self, equipo:Equipo):
@@ -118,6 +163,7 @@ class SistemaEvaporacionGraph:
         self.graph.add_edge(
             spec.equipo_origen,
             spec.equipo_destino,
+            key=spec.id_conexion,          # cada corriente es una arista distinta
             id_conexion = spec.id_conexion,
             corriente = spec.corriente,
             puerto_origen= spec.puerto_origen,
