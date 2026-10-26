@@ -2,225 +2,173 @@
 Clases que modelan y estructuran los datos internos del modelo
 """
 
+from __future__ import annotations
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import List, Optional, Any, Dict
-import networkx as nx
-import numpy as np
+from core.schemas.base import Direccion, Equipo, Puerto, TipoFlujo
 
+def _p(
+        nombre:str,
+        d:Direccion,
+        t:TipoFlujo = TipoFlujo.MATERIA
+)->Puerto:
 
-Array = np.ndarray
+    return Puerto(
+        nombre=nombre,
+        direccion=d, 
+        tipo= t
+    )
 
-
-class Fase(str, Enum):
-    """Estado de agregación de una corriente."""
-    LIQUIDO = "LIQUIDO"
-    VAPOR = "VAPOR"
-    BIFASICO = "BIFASICO"
-
-
-# Convención de puertos de un evaporador (lado proceso + lado calefacción).
-PUERTOS_EVAPORADOR: List[str] = [
-    "alimentacion",   # entrada de líquido a concentrar (proceso)
-    "liquido",        # salida de concentrado (fondo, proceso)
-    "vapor",          # salida de vapor (tope, proceso) -> puede ir a otro efecto
-    "steam",          # entrada de vapor de calefacción (lado tubos)
-    "condensado",     # salida de condensado (lado tubos, tras trampa de vapor)
-]
-
-
-
-@dataclass
-class Equipo:
-    """
-    Clase que define las propiedades generales de cualquier equipo
-    """
-    nombre: str
-    nombres_puertos: List[str]
-    # Al poner init=False, Python no lo pide en el __init__ y se evitan conflictos de herencia
-    puertos: Dict[str, str] = field(init=False, default_factory=dict)
-
-    def __post_init__(self):
-        self.puertos = {name_port: f"{self.nombre}.{name_port}" for name_port in self.nombres_puertos}
-
-@dataclass
-class Composicion:
-    """Gestiona composición y modelo de la sustancia a simular."""
-    sustancias: List[str]
-    fraccion_masa: List[float]
-    metodo: str = "UNIFAC"
-    inchi_keys: Optional[List[str]] = None
-
-    def validar(self):
-        """Validación útil para evitar errores numéricos en SciPy."""
-        if not np.isclose(sum(self.fraccion_masa), 1.0, atol=1e-3):
-            raise ValueError("Las fracciones de masa deben sumar 1.0")
-
-    def __post_init__(self):
-        self.validar()
-
-@dataclass
-class Corriente:
-    """
-    Representa el estado termodinámico y de transporte en una conexión.
-    Esta clase se almacenará directamente en los atributos de las aristas de NetworkX.
-    """
-    nombre: str
-    composicion: Composicion
-    temperatura: float  # K
-    presion: float      # Pa
-    flujo_masico: float # kg/s
-    fase: Fase = Fase.LIQUIDO  # estado de agregación (necesario para enrutar vapor vs líquido)
-
-@dataclass
+@dataclass(kw_only=True)
 class IntercambiadorCalor(Equipo):
-    """Propiedades de transferencia de calor."""
-    superficie: float
-    constante_transferencia: float  # U global
+    """
+    Condensador que entrega energía al evaporador para el proceso
+    """
 
-@dataclass
+    area:float
+    coeficiente_global:float
+
+    @property
+    def calor_transferido(self)->float | None:
+        q = self.puerto("q", TipoFlujo.ENERGIA)
+        if q.conexion is None:
+            return None
+
+        return q.conexion
+
+    def calcular(self) -> None:
+        raise NotImplementedError(f"{type(self).__name__}.calcular() no implementado")
+
+    @staticmethod
+    def puertos_estandar()-> list[Puerto]:
+        return [
+            _p("entrada_caliente", Direccion.ENTRADA),
+            _p("condensado", Direccion.SALIDA),
+            _p("q", Direccion.SALIDA, TipoFlujo.ENERGIA)
+        ]
+
+@dataclass(kw_only=True)
 class Evaporador(Equipo):
     """
-    Modelo de equipo unitario (Nodo).
-
-    Las corrientes viven en las aristas del grafo; este nodo solo define el
-    estado del equipo. Puertos esperados (ver PUERTOS_EVAPORADOR):
-
-      * alimentacion -> entrada de líquido de proceso
-      * liquido      -> salida de concentrado (fondo)
-      * vapor        -> salida de vapor (tope)
-      * steam        -> entrada de vapor de calefacción (lado tubos)
-      * condensado   -> salida de condensado (lado tubos)
+    Cuerpo de evaporación, recibe la energía Q y separa vapor y licor
     """
-    # Variables de estado o diseño del equipo
-    temperatura: float
-    presion: float
-    masa_holgura: float  # Holdup de líquido en el evaporador
-    composicion: Composicion
-    intercambiador: Optional[IntercambiadorCalor] = None
 
-@dataclass
+    presion_operacion:float
+    area: float | None = None
+
+    def calcular(self) -> None:
+        raise NotImplementedError(f"{type(self).__name__}.calcular() no implementado")
+
+    @staticmethod
+    def puertos_estandar()->list[Puerto]:
+        return [
+            _p("alimentacion", Direccion.ENTRADA),
+            _p("q", Direccion.ENTRADA, TipoFlujo.ENERGIA),
+            _p("vapor", Direccion.SALIDA),
+            _p("liquido", Direccion.SALIDA)
+        ]
+
+@dataclass(kw_only=True)
+class CondensadorFinal(Equipo):
+    """Condensador total al vacío (último efecto)."""
+    area: float
+    coeficiente_global: float
+
+    def calcular(self) -> None:
+        raise NotImplementedError(f"{type(self).__name__}.calcular() no implementado")
+
+    @staticmethod
+    def puertos_estandar() -> list[Puerto]:
+        return [
+            _p("vapor", Direccion.ENTRADA),
+            _p("condensado", Direccion.SALIDA),
+            _p("agua_entrada", Direccion.ENTRADA),
+            _p("agua_salida", Direccion.SALIDA),
+        ]
+
+
+@dataclass(kw_only=True)
 class Fuente(Equipo):
     """
-    Nodo de frontera: suministra una corriente (alimentación de proceso o
-    servicio de vapor). No tiene ecuaciones de conservación; es una condición
-    de borde cuyo flujo/T/P/composición vienen dados en la arista saliente.
+    Frontera de entrada del proceso.
+
+    Aporta una corriente al flowsheet sin resolver ningún balance: es una
+    condición de frontera. El estado de la corriente NO se guarda aquí, sino
+    en la arista de materia que sale de este nodo (fuente única de verdad).
+
+    Los puertos se generan solos; solo pásalos si necesitas nombres propios.
     """
-    nombres_puertos: List[str] = field(default_factory=lambda: ["salida"])
 
-@dataclass
-class Purga(Equipo):
+    puertos: list[Puerto] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if not self.puertos:
+            self.puertos = self.puertos_estandar()
+        super().__post_init__()
+
+    def calcular(self) -> None:
+        """No hay nada que resolver: la corriente llega impuesta."""
+        return None
+
+    @staticmethod
+    def puertos_estandar() -> list[Puerto]:
+        return [_p("salida", Direccion.SALIDA)]
+
+
+@dataclass(kw_only=True)
+class Sumidero(Equipo):
     """
-    Nodo de frontera: absorbe una corriente (producto concentrado, condensado,
-    venteo). No tiene ecuaciones de conservación; es un sumidero.
+    Frontera de salida del proceso.
+
+    Recibe corrientes que abandonan el flowsheet (producto, condensado,
+    purga, vapor al vacío). No resuelve balances; solo cierra el grafo para
+    que la red quede débilmente conexa y `RedProceso.validar()` pase.
+
+    Los puertos se generan solos; solo pásalos si necesitas nombres propios.
     """
-    nombres_puertos: List[str] = field(default_factory=lambda: ["entrada"])
 
-@dataclass
-class Valvula(Equipo):
-    """Válvula de laminación / caída de presión."""
-    coeficiente_descarga: float
-    presion_salida: Optional[float] = None
+    puertos: list[Puerto] = field(default_factory=list)
 
-@dataclass
-class EspecificacionConexion:
-    """
-    Empaqueta toda la información necesaria para conectar dos puntos del sistema.
-    Evita funciones con mil argumentos individuales.
-    """
-    id_conexion: str
-    equipo_origen: str
-    puerto_origen: str
-    equipo_destino: str
-    puerto_destino: str
-    corriente: Corriente
+    def __post_init__(self) -> None:
+        if not self.puertos:
+            self.puertos = self.puertos_estandar()
+        super().__post_init__()
 
-class SistemaEvaporacionGraph:
-    def __init__(self, nombre:str):
-        self.name = nombre
-        # MultiDiGraph: permite aristas paralelas entre el mismo par de nodos,
-        # necesario para conectar, p.ej., líquido Y vapor entre dos efectos.
-        self.graph = nx.MultiDiGraph()
-        pass
+    def calcular(self) -> None:
+        """No hay nada que resolver: la corriente abandona el sistema."""
+        return None
 
-    def agregar_equipo(self, equipo:Equipo):
-        """
-        Agrega un nodo de un grafo
-        """
-        self.graph.add_node(
-            equipo.nombre,
-            objeto=equipo
-        )
+    @staticmethod
+    def puertos_estandar() -> list[Puerto]:
+        return [_p("entrada", Direccion.ENTRADA)]
 
-    def agregar_conexion(self, spec:EspecificacionConexion):
-        """
-        Genera la conexión de un equipo utilizando la clase "EspecificacionConexion"
-        """
 
-        if not self.graph.has_node(spec.equipo_origen) or not self.graph.has_node(spec.equipo_destino):
-            raise ValueError(f"No exite el equipo {spec.equipo_origen} o No existe el equipo {spec.equipo_destino}")
+@dataclass(kw_only=True)
+class Divisor(Equipo):
+    """Nodo auxiliar: reparte una corriente en N."""
+    n_salidas: int = 2
+    puertos: list[Puerto] = field(default_factory=list)
 
-        self.graph.add_edge(
-            spec.equipo_origen,
-            spec.equipo_destino,
-            key=spec.id_conexion,          # cada corriente es una arista distinta
-            id_conexion = spec.id_conexion,
-            corriente = spec.corriente,
-            puerto_origen= spec.puerto_origen,
-            puerto_destino = spec.puerto_destino
+    def calcular(self) -> None:
+        raise NotImplementedError(f"{type(self).__name__}.calcular() no implementado")
+
+    def __post_init__(self) -> None:
+        if not self.puertos:
+            self.puertos = self.puertos_estandar(self.n_salidas)
+        super().__post_init__()
+
+    @staticmethod
+    def puertos_estandar(n_salidas: int = 2) -> list[Puerto]:
+        return (
+            [_p("entrada", Direccion.ENTRADA)]
+            + [_p(f"salida_{i}", Direccion.SALIDA) for i in range(n_salidas)]
         )
 
 if __name__ == "__main__":
-    print("Generando composición")
-
-    comp = Composicion(
-        sustancias=["water", "cetona"],
-        fraccion_masa=[0.4, 0.6],
-        metodo="NRTL" # Corregido de NLTR a NRTL
+    ic = IntercambiadorCalor(
+        nombre="IC-101",
+        puertos=IntercambiadorCalor.puertos_estandar(),
+        area=20,
+        coeficiente_global=0.1
     )
 
-    print("Generando evaporador 1")
-
-    evp1 = Evaporador(
-        nombre="E101",
-        nombres_puertos=["up", "down"],
-        temperatura=300.0,
-        presion=0.5,
-        masa_holgura=10.0,
-        composicion=comp
-    )
-
-    evp2 = Evaporador(
-        nombre="E102",
-        nombres_puertos=["up", "down"],
-        temperatura=300.0,
-        presion=0.5,
-        masa_holgura=10.0,
-        composicion=comp
-    )
-
-    fd = Corriente(
-        "S1",
-        composicion=comp,
-        temperatura=320.0,
-        presion=0.8,
-        flujo_masico=3.0
-    )
-
-    system = SistemaEvaporacionGraph("Sistema_evaporacion")
-    system.agregar_equipo(evp1)
-    system.agregar_equipo(evp2)
-
-    conexion = EspecificacionConexion(
-        id_conexion=fd.nombre,
-        equipo_origen=evp1.nombre,
-        equipo_destino=evp2.nombre,
-        puerto_origen=evp1.puertos["up"],
-        puerto_destino=evp2.puertos["down"],
-        corriente=fd
-    )
-
-    system.agregar_conexion(conexion)
-
-    print(evp2.puertos["up"])
-    print("¡Sistema y conexión inicializados con éxito!")
+    print(ic.calor_transferido)
