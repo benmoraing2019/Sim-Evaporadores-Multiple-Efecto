@@ -1,42 +1,31 @@
 """
-Estructura de las corrientes que simulan el proceso
+Sistema que gestiona las interacciones entre los nodos (equipos) del sistemma
 """
 
-from __future__ import annotations
-from dataclasses import dataclass
+from core.schemas.base import Fase, Conexion, TipoConexion
 
-from core.schemas.base import Composicion, Fase
+from dataclasses import dataclass, field
+from typing import List, Dict
 
-@dataclass(slots=True, eq=False)
-class Corriente:
+@dataclass
+class CorrienteMateria(Conexion):
     """
-    Flujo de material (arista de materia)
+    Contiene las propiedades quim
     """
+    tipo_conexion:TipoConexion = field(default= TipoConexion.MATERIA)
 
-    nombre:str
-    comp:Composicion
-
+    # Propiedades quimicas 
     temperatura:float
     presion:float
     flujo_masico:float
+    composicion:Dict[str, float] = field(default_factory= lambda: dict)
+    entalpia:float | None = None
 
-    fase:Fase = Fase.LIQUIDO
-    calidad:float | None = None
-    entalpia:float| None = None
-
-    def __post_init__(self):
-        if self.presion <=0:
-            raise ValueError(f"La presión debe ser positiva: {self.presion}")
-        if self.flujo_masico < 0:
-            raise ValueError(f"El flujo másico no debe ser negativo: {self.flujo_masico}")
-        if self.fase is Fase.BIFASICO and self.calidad is None:
-            raise ValueError(f"Una corriente bifasica requiere definido el parametro 'calidad': {self.calidad}")
-
-@dataclass(slots=True, eq=False)
-class CargaTermica:
+@dataclass
+class CorrienteCalor(Conexion):
     """
-    Flujo energético (arista energía). Q en W, None = Incógnita
+    Gestiona las interacciones por transferencia de calor entre nodos
     """
+    tipo_conexion:TipoConexion = field(default= TipoConexion.ENERGIA)
+    flujo_calor:float
 
-    nombre:str
-    Q:float | None = None
