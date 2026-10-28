@@ -27,7 +27,7 @@ class Conexion:
     Estructrua que encapsula las propiedades generales de una conexión (correinte)
     """
     nombre:str
-    tipo_conexion:TipoConexion
+    tipo_conexion:TipoConexion = None
 
 class Fase(Enum):
     """
