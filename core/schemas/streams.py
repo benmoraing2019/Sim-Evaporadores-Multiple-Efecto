@@ -19,8 +19,9 @@ class LineaMateria(Conexion):
     temperatura:float
     presion:float
     flujo_masico:float
-    fase:Fase
     composicion:Dict[str, float] = field(default_factory= lambda: dict)
+
+    fase:Fase = None
     calidad:float | None = None
     entalpia:float | None = None
 
@@ -33,14 +34,28 @@ class LineaCalor(Conexion):
     tipo_conexion:ClassVar[TipoConexion] = TipoConexion.ENERGIA
 
 @dataclass
-class ServicioVapor(Equipo):
+class LineaVapor(Conexion):
+    """
+    Línea que transporta vapor
+    """
+
+    temperatura:float
+    presion:float
+    fase:Fase
+    tipo_conexion:ClassVar[TipoConexion] = TipoConexion.MATERIA
+    entalpia:float | None = None
+    calidad:float | None = None
+
+
+@dataclass
+class Caldera(Equipo):
     """
     Nodo de servicio de vapor
     """
 
     # Condiciones
-    temperatura:float
-    presion:float
+    temperatura:float | None = None
+    presion:float | None = None
 
 @dataclass
 class ServicioPurga(Equipo):
