@@ -3,7 +3,7 @@ Estructura base para la interconexión de clases
 """
 
 from dataclasses import dataclass, field
-from typing import List
+from typing import Dict, List
 from enum import Enum
 
 @dataclass
@@ -37,3 +37,16 @@ class Fase(Enum):
     VAPOR = "VAPOR"
     ELV = "ELV"
 
+@dataclass(kw_only=True)
+class PropiedadesQuimicas:
+    """
+    Gestiona las propiedades químicas de varias sustancias
+    """
+
+    temperatura:float
+    presion:float
+    composicion:Dict[str, float]
+
+    fase:Fase | None = field(default=None)
+    calidad:float | None = field(default = None)
+    entalpia:float | None = field(default= None)

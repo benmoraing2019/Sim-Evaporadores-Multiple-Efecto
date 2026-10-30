@@ -5,6 +5,8 @@ se tomarán las siguientes recomendaciones:
     - La mezcla líquida es jarabe (agua y azucar)
 """
 
+from typing import List
+
 from core.schemas.base import Fase
 from core.schemas.streams import Caldera, LineaMateria, ServicioFuente, ServicioPurga, LineaVapor
 from core.schemas.engine import Evaporador, IntercambiadorCalor
@@ -12,7 +14,7 @@ from core.schemas.engine import Evaporador, IntercambiadorCalor
 import CoolProp.CoolProp as CP
 
 
-class ServicioVapor:
+class ServicioCaldera:
     """
     Servicio de simulación de vapor
     """
@@ -48,6 +50,15 @@ class ServicioVapor:
 
         return vapor
 
+class ServicioSimQuimica:
+    """
+    Servicio de simulación de propiedades quimcias presentes
+    """
+
+    def __init__(self, componentes:List[str])->None:
+        self.componentes = componentes
+        pass
+
 
 if __name__ == "__main__":
     # Prueba de la simulación de la caldera
@@ -57,7 +68,7 @@ if __name__ == "__main__":
         temperatura=340
     )
 
-    sv = ServicioVapor()
+    sv = ServicioCaldera()
     s1 = sv.sim_caldera(caldera)
 
     print(s1)

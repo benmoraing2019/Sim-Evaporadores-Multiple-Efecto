@@ -2,28 +2,37 @@
 Sistema que gestiona las interacciones entre los nodos (equipos) del sistemma
 """
 
-from core.schemas.base import Fase, Conexion, TipoConexion, Equipo
+from core.schemas.base import Fase, Conexion, TipoConexion, Equipo, PropiedadesQuimicas
 
 from dataclasses import dataclass, field
 from typing import List, Dict, ClassVar
 
 @dataclass
-class LineaMateria(Conexion):
+class LineaMateria(Conexion, PropiedadesQuimicas):
     """
     Contiene las propiedades quim
     """
 
     tipo_conexion:ClassVar[TipoConexion] = TipoConexion.MATERIA
 
-    # Propiedades quimicas 
-    temperatura:float
-    presion:float
+    # Propiedades quimicas
     flujo_masico:float
-    composicion:Dict[str, float] = field(default_factory= lambda: dict)
 
-    fase:Fase = None
-    calidad:float | None = None
-    entalpia:float | None = None
+    @property
+    def propiedades_quimicas(self)->PropiedadesQuimicas:
+        """
+        Entrega la clase de propiedades quimcias ordenadas
+        """
+
+        return PropiedadesQuimicas(
+            temperatura=self.temperatura,
+            presion = self.presion,
+            composicion= self.composicion,
+            fase=self.fase,
+            calidad=self.calidad,
+            entalpia=self.entalpia
+        )
+
 
 @dataclass
 class LineaCalor(Conexion):

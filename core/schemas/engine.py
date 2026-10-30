@@ -1,7 +1,7 @@
 """
 Estructura de los equipos y sus interconecciones
 """
-from core.schemas.base import Equipo
+from core.schemas.base import Equipo, PropiedadesQuimicas
 
 from dataclasses import dataclass, field
 from typing import Dict
@@ -15,16 +15,27 @@ class IntercambiadorCalor(Equipo):
     coeficiente_transferencia:float
 
 @dataclass
-class Evaporador(Equipo):
+class Evaporador(Equipo, PropiedadesQuimicas):
     """
     Clase que gestiona los datos del evaporador
     """
 
     # Propiedades internas del sistema
-    temperatura:float
-    presion:float
     masa:float
-    composicion:Dict[str, float] = field(default_factory= lambda: dict)
+    @property
+    def propiedades_quimicas(self)->PropiedadesQuimicas:
+        """
+        Entrega la clase de propiedades quimcias ordenadas
+        """
+
+        return PropiedadesQuimicas(
+            temperatura=self.temperatura,
+            presion = self.presion,
+            composicion= self.composicion,
+            fase=self.fase,
+            calidad=self.calidad,
+            entalpia=self.entalpia
+        )
 
 @dataclass
 class Valvula(Equipo):
