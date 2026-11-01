@@ -3,7 +3,7 @@ Sistema que gestiona la planta y las interconexiones con el grafo
 """
 from core.schemas.base import Equipo, Fase, Conexion, TipoConexion
 from core.schemas.engine import Evaporador, IntercambiadorCalor
-from core.schemas.streams import LineaCalor, LineaMateria, ServicioFuente, ServicioPurga, ServicioVapor
+from core.schemas.streams import LineaMateria, ServicioFuente, ServicioPurga
 
 import networkx as nx
 

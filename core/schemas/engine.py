@@ -22,20 +22,7 @@ class Evaporador(Equipo, PropiedadesQuimicas):
 
     # Propiedades internas del sistema
     masa:float
-    @property
-    def propiedades_quimicas(self)->PropiedadesQuimicas:
-        """
-        Entrega la clase de propiedades quimcias ordenadas
-        """
-
-        return PropiedadesQuimicas(
-            temperatura=self.temperatura,
-            presion = self.presion,
-            composicion= self.composicion,
-            fase=self.fase,
-            calidad=self.calidad,
-            entalpia=self.entalpia
-        )
+    
 
 @dataclass
 class Valvula(Equipo):

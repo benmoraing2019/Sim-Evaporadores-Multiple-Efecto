@@ -18,42 +18,21 @@ class LineaMateria(Conexion, PropiedadesQuimicas):
     # Propiedades quimicas
     flujo_masico:float
 
-    @property
-    def propiedades_quimicas(self)->PropiedadesQuimicas:
-        """
-        Entrega la clase de propiedades quimcias ordenadas
-        """
-
-        return PropiedadesQuimicas(
-            temperatura=self.temperatura,
-            presion = self.presion,
-            composicion= self.composicion,
-            fase=self.fase,
-            calidad=self.calidad,
-            entalpia=self.entalpia
-        )
+@dataclass
+class LineaVapor(LineaMateria):
+    """
+    Sistema que gestiona los flujos de vapor de servicio en la simulación
+    """
+    tipo_conexion:ClassVar[TipoConexion] = TipoConexion.VAPOR
 
 
 @dataclass
-class LineaCalor(Conexion):
+class Calor(Conexion):
     """
     Gestiona las interacciones por transferencia de calor entre nodos
     """
     flujo_calor:float
     tipo_conexion:ClassVar[TipoConexion] = TipoConexion.ENERGIA
-
-@dataclass
-class LineaVapor(Conexion):
-    """
-    Línea que transporta vapor
-    """
-
-    temperatura:float
-    presion:float
-    fase:Fase
-    tipo_conexion:ClassVar[TipoConexion] = TipoConexion.MATERIA
-    entalpia:float | None = None
-    calidad:float | None = None
 
 
 @dataclass

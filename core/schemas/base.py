@@ -2,7 +2,9 @@
 Estructura base para la interconexión de clases
 """
 
-from dataclasses import dataclass, field
+from __future__ import annotations
+
+from dataclasses import dataclass, field, asdict
 from typing import Dict, List
 from enum import Enum
 
@@ -20,6 +22,22 @@ class TipoConexion(Enum):
 
     MATERIA = "MATERIA"
     ENERGIA = "ENERGIA"
+    VAPOR = "VAPOR"
+
+class Sustancias(Enum):
+    """
+    Contiene los nombres de las sustancias participantes en los cálculos de la simulación
+    """
+    WATER = "water"
+    GLUCOSE = "glucose"
+
+    @classmethod
+    def obtener_nombres(cls) -> List[str]:
+        """
+        Entrega la lista de los nombres (valores) de las sustancias participantes.
+        Retorna: ['water', 'glucose']
+        """
+        return [sustancia.value for sustancia in cls]
 
 @dataclass
 class Conexion:
@@ -45,8 +63,22 @@ class PropiedadesQuimicas:
 
     temperatura:float
     presion:float
-    composicion:Dict[str, float]
-
+    composicion:Dict[str, float] | None = field(default= None)
     fase:Fase | None = field(default=None)
     calidad:float | None = field(default = None)
     entalpia:float | None = field(default= None)
+
+    @property
+    def propiedades_quimicas(self)->PropiedadesQuimicas:
+        """
+        Entrega la clase de propiedades quimcias ordenadas
+        """
+
+        return PropiedadesQuimicas(
+            temperatura=self.temperatura,
+            presion = self.presion,
+            composicion= self.composicion,
+            fase=self.fase,
+            calidad=self.calidad,
+            entalpia=self.entalpia
+        )
