@@ -3,17 +3,24 @@ Estructura base para la interconexión de clases
 """
 
 from __future__ import annotations
+from abc import ABC, abstractmethod
 
 from dataclasses import dataclass, field, asdict
-from typing import Dict, List
+from typing import Dict, List, TYPE_CHECKING
 from enum import Enum
 
+if TYPE_CHECKING:
+    from core.services.thermo_service import PropSimService
+
 @dataclass
-class Equipo:
+class Equipo(ABC):
     """
     Estructura base de un equipo cualquiera
     """
     nombre:str
+
+
+    
 
 class TipoConexion(Enum):
     """
