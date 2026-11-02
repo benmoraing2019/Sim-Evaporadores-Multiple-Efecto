@@ -11,16 +11,8 @@ from enum import Enum
 
 if TYPE_CHECKING:
     from core.services.thermo_service import PropSimService
+    from core.services.ecuaciones_manager import GestorSistemaEO
 
-@dataclass
-class Equipo(ABC):
-    """
-    Estructura base de un equipo cualquiera
-    """
-    nombre:str
-
-
-    
 
 class TipoConexion(Enum):
     """
@@ -89,3 +81,47 @@ class PropiedadesQuimicas:
             calidad=self.calidad,
             entalpia=self.entalpia
         )
+
+
+@dataclass
+class Equipo(ABC):
+    """
+    Estructura base de un equipo cualquiera
+    """
+    nombre:str
+
+    @abstractmethod
+    def modelar_sistema(
+        self,
+        gestor:GestorSistemaEO,
+        inlets: List[Conexion],
+        outlets:List[Conexion],
+        thermo:PropSimService
+    )->None:
+        """
+        [MÉTODO OBLIGATORIO]
+        Aquí el equipo debe traducir su física al sistema numérico.
+        
+        Pasos a seguir al heredar:
+        1. Identificar corrientes (inlets/outlets).
+        2. Inscribir variables en el gestor: var = gestor.registrar_variable(...)
+        3. Definir funciones anidadas (closures) para los residuos (masa, energía, etc.).
+        4. Inscribir los residuos: gestor.registrar_residuo(funcion)
+        """
+        pass
+
+    @abstractmethod
+    def aplicar_resultados_finales(
+        self,
+        inlets:List[Conexion],
+        outlets:List[Conexion],
+        thermo: PropSimService
+    )->None:
+        """
+        [MÉTODO OBLIGATORIO]
+        Se ejecuta después de que el Solver converge exitosamente.
+        Sirve para tomar los valores finales de las variables (var.valor)
+        y fijarlos definitivamente en los dataclasses de las corrientes
+        y atributos internos del equipo.
+        """
+        pass
