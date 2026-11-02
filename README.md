@@ -707,19 +707,6 @@ Las sustancias viven en `Sustancias` (`core/schemas/base.py`). Para una mezcla m
 
 ---
 
-## 13. Referencias
-
-1. Smith, R. *Chemical Process Design and Integration*. Wiley.
-2. Westerberg, A. W.; Hutchison, H. P.; Motard, R. L.; Winter, P. *Process Flowsheeting*. Cambridge University Press.
-3. Perry, R. H.; Green, D. W. *Perry's Chemical Engineers' Handbook* — Evaporation.
-4. Bell, I. H.; Wronski, J.; Quoilin, S.; Lemort, V. *Pure and Pseudo-pure Fluid Thermophysical Property Evaluation and the Open-Source Thermophysical Property Library CoolProp*. Ind. Eng. Chem. Res., 2014.
-5. IAPWS. *Revised Release on the IAPWS Formulation 1995 for the Thermodynamic Properties of Ordinary Water Substance*.
-6. Abrams, D. S.; Prausnitz, J. M. *Statistical thermodynamics of liquid mixtures: A new expression for the excess Gibbs energy of partly or completely miscible systems*. AIChE J., 1975.
-7. Storn, R.; Price, K. *Differential Evolution — A Simple and Efficient Heuristic for Global Optimization over Continuous Spaces*. J. Global Optim., 1997.
-8. Branch, M. A.; Coleman, T. F.; Li, Y. *A Subspace, Interior, and Conjugate Gradient Method for Large-Scale Bound-Constrained Minimization Problems*. SIAM J. Sci. Comput., 1999.
-
----
-
 <div align="center">
 
 **Evaporadores** · simulación EO de trenes MEE con cierre termodinámico riguroso
