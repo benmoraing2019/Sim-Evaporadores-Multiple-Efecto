@@ -1,61 +1,52 @@
-"""
-Sistema que gestiona las interacciones entre los nodos (equipos) del sistemma
-"""
+"""Corrientes de materia, vapor y calor que conectan los nodos de la planta."""
 
-from core.schemas.base import Fase, Conexion, TipoConexion, Equipo, PropiedadesQuimicas
+from dataclasses import dataclass
+from typing import ClassVar
 
-from dataclasses import dataclass, field
-from typing import List, Dict, ClassVar
+from core.schemas.base import Conexion, Equipo, PropiedadesQuimicas, TipoConexion
+
 
 @dataclass
 class LineaMateria(Conexion, PropiedadesQuimicas):
-    """
-    Contiene las propiedades quim
-    """
+    """Corriente de materia con propiedades termodinámicas."""
 
-    tipo_conexion:ClassVar[TipoConexion] = TipoConexion.MATERIA
+    tipo_conexion: ClassVar[TipoConexion] = TipoConexion.MATERIA
 
-    # Propiedades quimicas
-    flujo_masico:float
+    flujo_masico: float
+
 
 @dataclass
 class LineaVapor(LineaMateria):
-    """
-    Sistema que gestiona los flujos de vapor de servicio en la simulación
-    """
-    tipo_conexion:ClassVar[TipoConexion] = TipoConexion.VAPOR
+    """Corriente de vapor de servicio."""
+
+    tipo_conexion: ClassVar[TipoConexion] = TipoConexion.VAPOR
 
 
 @dataclass
 class Calor(Conexion):
-    """
-    Gestiona las interacciones por transferencia de calor entre nodos
-    """
-    flujo_calor:float
-    tipo_conexion:ClassVar[TipoConexion] = TipoConexion.ENERGIA
+    """Transferencia de energía térmica entre dos equipos."""
+
+    flujo_calor: float
+    tipo_conexion: ClassVar[TipoConexion] = TipoConexion.ENERGIA
 
 
 @dataclass
 class Caldera(Equipo):
-    """
-    Nodo de servicio de vapor
-    """
+    """Nodo proveedor de vapor de servicio."""
 
-    # Condiciones
-    temperatura:float | None = None
-    presion:float | None = None
+    temperatura: float | None = None
+    presion: float | None = None
+
 
 @dataclass
 class ServicioPurga(Equipo):
-    """
-    Servicio encargado de la purga de materiales del grafo
-    """
+    """Nodo sumidero que retira materia del grafo."""
+
 
 @dataclass
 class ServicioFuente(Equipo):
-    """
-    Nodo de fuente de materia
-    """
-    correinte_fuente:LineaMateria
+    """Nodo que entrega una corriente de materia al grafo."""
+
+    corriente_fuente: LineaMateria
 
 

@@ -1,129 +1,173 @@
-from scipy.optimize import differential_evolution, root
+"""Orquestación del grafo de equipos y resolución simultánea del sistema."""
 
-from core.schemas.base import Equipo, Fase, Conexion, TipoConexion
-from core.schemas.engine import Evaporador, IntercambiadorCalor
+from typing import List, Tuple
+
+import networkx as nx
+from scipy.optimize import least_squares
+
+from core.schemas.base import Conexion, Equipo, Fase
+from core.schemas.engine import Evaporador
 from core.schemas.streams import LineaMateria
 from core.services.ecuaciones_manager import GestorSistemaEO
 from core.services.thermo_service import PropSimService
-from scipy.optimize import least_squares
-import numpy as np
-import networkx as nx
+
+_KELVIN_0C = 273.15
+_CLAVES_FRACCION = ("xg", "x_glucose")
+_CLAVES_TEMPERATURA = ("t_out", "temperatura")
+_LIMITE_FRACCION = (0.0, 0.999)
+_LIMITE_TEMPERATURA = (_KELVIN_0C + 10.0, _KELVIN_0C + 300.0)
+_LIMITE_FLUJO = (0.0, float("inf"))
+
+
+def _limites_de_variable(nombre: str) -> Tuple[float, float]:
+    """Asigna un rango físico a cada incógnita según su nombre."""
+    nombre = nombre.lower()
+    if any(clave in nombre for clave in _CLAVES_FRACCION):
+        return _LIMITE_FRACCION
+    if any(clave in nombre for clave in _CLAVES_TEMPERATURA):
+        return _LIMITE_TEMPERATURA
+    return _LIMITE_FLUJO
+
 
 class Planta:
-    def __init__(self, nombre_planta: str):
+    """Grafo de equipos que se resuelve como un único sistema de ecuaciones."""
+
+    def __init__(self, nombre_planta: str) -> None:
         self.nombre = nombre_planta
         self.grafo = nx.DiGraph()
 
-    def añadir_nodo(self, nodo: Equipo):
+    def añadir_nodo(self, nodo: Equipo) -> None:
         self.grafo.add_node(nodo.nombre, data=nodo)
 
-    def añadir_conexion(self, nodo_out: str, nodo_in: str, linea: Conexion):
+    def añadir_conexion(self, nodo_out: str, nodo_in: str, linea: Conexion) -> None:
         self.grafo.add_edge(nodo_out, nodo_in, data=linea)
 
-    # =========================================================================
-    # EL ORQUESTADOR: CONECTA EL GRAFO CON EL SOLVER MATEMÁTICO
-    # =========================================================================
     def resolver_planta(self) -> None:
         print(f"\n--- Iniciando Resolución de Planta: {self.nombre} ---")
         gestor = GestorSistemaEO()
         termo = PropSimService()
+        orden = self._orden_de_resolucion()
 
-        # 1. ORDEN TOPOLÓGICO
+        self._inscribir_equipos(gestor, termo, orden)
+        print(
+            "Topología procesada. "
+            f"Sistema EO: {len(gestor.variables)} variables "
+            f"y {len(gestor.funciones_residuo)} ecuaciones."
+        )
+        self._validar_sistema_cuadrado(gestor)
+
+        solucion = self._resolver_sistema(gestor)
+        self._aplicar_resultados(gestor, termo, orden, solucion)
+
+    def _orden_de_resolucion(self) -> List[str]:
         try:
-            orden_nodos = list(nx.topological_sort(self.grafo))
+            return list(nx.topological_sort(self.grafo))
         except nx.NetworkXUnfeasible:
-            print("⚠️ Advertencia: Reciclo detectado. Usando orden estándar.")
-            orden_nodos = list(self.grafo.nodes)
+            print("Advertencia: se detectó un reciclo; se usará el orden de inserción.")
+            return list(self.grafo.nodes)
 
-        # 2. INCRIPCIÓN EO
-        for nombre_nodo in orden_nodos:
-            equipo: Equipo = self.grafo.nodes[nombre_nodo]['data']
-            inlets = [edge_data['data'] for _, _, edge_data in self.grafo.in_edges(nombre_nodo, data=True)]
-            outlets = [edge_data['data'] for _, _, edge_data in self.grafo.out_edges(nombre_nodo, data=True)]
-            equipo.modelar_sistema(gestor, inlets, outlets, termo)
+    def _equipo(self, nombre: str) -> Equipo:
+        return self.grafo.nodes[nombre]["data"]
 
-        print(f"Topología procesada. Sistema EO: {len(gestor.variables)} variables y {len(gestor.funciones_residuo)} ecuaciones.")
-        
-        if len(gestor.variables) != len(gestor.funciones_residuo):
-            raise ValueError(f"Sistema no cuadrado: {len(gestor.variables)} vs {len(gestor.funciones_residuo)}.")
-        
-        # 3. LÍMITES INTELIGENTES (SMART BOUNDS)
-        limites_inferiores = []
-        limites_superiores = []
-        
-        for var in gestor.variables:
-            nombre = var.nombre.lower()
-            if "xg" in nombre or "x_glucose" in nombre:
-                # Fracciones molares estrictamente entre 0 y casi 1
-                limites_inferiores.append(0.0)
-                limites_superiores.append(0.999)
-            elif "t_out" in nombre or "temperatura" in nombre:
-                # Temperaturas líquidas/vapor (ej. 10 °C a 300 °C)
-                limites_inferiores.append(273.15 + 10.0)
-                limites_superiores.append(273.15 + 300.0)
-            else:
-                # Flujos (F, L, V) y Calor (Q)
-                limites_inferiores.append(0.0)
-                limites_superiores.append(float('inf'))
-                
-        bounds_fisicos = (limites_inferiores, limites_superiores)
+    def _corrientes(self, nombre: str) -> Tuple[List[Conexion], List[Conexion]]:
+        entradas = [
+            datos["data"] for _, _, datos in self.grafo.in_edges(nombre, data=True)
+        ]
+        salidas = [
+            datos["data"] for _, _, datos in self.grafo.out_edges(nombre, data=True)
+        ]
+        return entradas, salidas
 
-        print("Ejecutando SciPy Least-Squares con Límites Físicos Inteligentes...")
-        
-        # 4. RESOLUCIÓN FINA (Newton-Trust Region Reflective)
+    def _inscribir_equipos(
+        self, gestor: GestorSistemaEO, termo: PropSimService, orden: List[str]
+    ) -> None:
+        for nombre in orden:
+            entradas, salidas = self._corrientes(nombre)
+            self._equipo(nombre).modelar_sistema(gestor, entradas, salidas, termo)
+
+    @staticmethod
+    def _validar_sistema_cuadrado(gestor: GestorSistemaEO) -> None:
+        incognitas = len(gestor.variables)
+        ecuaciones = len(gestor.funciones_residuo)
+        if incognitas != ecuaciones:
+            raise ValueError(
+                f"Sistema no cuadrado: {incognitas} incógnitas y {ecuaciones} ecuaciones."
+            )
+
+    def _limites_fisicos(
+        self, gestor: GestorSistemaEO
+    ) -> Tuple[List[float], List[float]]:
+        inferiores: List[float] = []
+        superiores: List[float] = []
+        for variable in gestor.variables:
+            inferior, superior = _limites_de_variable(variable.nombre)
+            inferiores.append(inferior)
+            superiores.append(superior)
+        return inferiores, superiores
+
+    def _resolver_sistema(self, gestor: GestorSistemaEO):
+        print("Ejecutando SciPy Least-Squares con límites físicos...")
         solucion = least_squares(
             fun=gestor.evaluar_sistema,
             x0=gestor.get_array(),
-            bounds=bounds_fisicos,
-            loss='linear',          # Cambiamos a 'linear' para exigir precisión absoluta al final
-            x_scale='jac',
-            max_nfev=5000
+            bounds=self._limites_fisicos(gestor),
+            loss="linear",
+            x_scale="jac",
+            max_nfev=5000,
         )
-
-        # 5. EVALUACIÓN Y CIERRE
-        # Eliminamos la restricción artificial de cost < 1.0 y confiamos en el ftol de SciPy
-        if solucion.success: 
-            print(f"✅ ¡Convergencia global exitosa! (Error Residual: {solucion.cost:.2e})")
-            
-            gestor.actualizar_array(solucion.x)
-            gestor.evaluar_sistema(solucion.x)
-            
-            for nombre_nodo in orden_nodos:
-                equipo: Equipo = self.grafo.nodes[nombre_nodo]['data']
-                inlets = [edge_data['data'] for _, _, edge_data in self.grafo.in_edges(nombre_nodo, data=True)]
-                outlets = [edge_data['data'] for _, _, edge_data in self.grafo.out_edges(nombre_nodo, data=True)]
-                equipo.aplicar_resultados_finales(inlets, outlets, termo)
-        else:
-            print("❌ Fallo en la convergencia de la planta.")
+        if not solucion.success:
+            print("Fallo en la convergencia de la planta.")
             print(f"Mensaje del Solver: {solucion.message}")
             print(f"Error residual estancado en: {solucion.cost:.2e}")
-            raise RuntimeError("La simulación no convergió. Revisa las condiciones de operación.")
+            raise RuntimeError(
+                "La simulación no convergió. Revisa las condiciones de operación."
+            )
+        return solucion
+
+    def _aplicar_resultados(
+        self,
+        gestor: GestorSistemaEO,
+        termo: PropSimService,
+        orden: List[str],
+        solucion,
+    ) -> None:
+        print(f"Convergencia exitosa. Error residual: {solucion.cost:.2e}")
+        gestor.actualizar_array(solucion.x)
+        gestor.evaluar_sistema(solucion.x)
+
+        for nombre in orden:
+            entradas, salidas = self._corrientes(nombre)
+            self._equipo(nombre).aplicar_resultados_finales(entradas, salidas, termo)
 
 
 if __name__ == "__main__":
-    print("Pruebas interconexiones de nodos de planta")
-    
-    # NOTA: Evita usar el mismo nombre para dos nodos, NetworkX usa el nombre como ID único.
-    evp_1 = Evaporador(
-        nombre="E-101", temperatura=300, presion=101325, masa=1000,
-        composicion={"water": 0.5, "glucose": 0.5}
-    )
+    print("Pruebas de interconexiones de nodos de planta")
 
-    evp_2 = Evaporador(
-        nombre="E-102", temperatura=300, presion=101325, masa=1000,
-        composicion={"water": 0.5, "glucose": 0.5}
+    evaporador_1 = Evaporador(
+        nombre="E-101",
+        temperatura=300,
+        presion=101325,
+        masa=1000,
+        composicion={"water": 0.5, "glucose": 0.5},
     )
-
-    s1 = LineaMateria(
-        nombre="S1", temperatura=300, presion=101325, fase=Fase.LIQUIDO,
-        composicion={"water": 0.5, "glucose": 0.5}, calidad=0, flujo_masico=100
+    evaporador_2 = Evaporador(
+        nombre="E-102",
+        temperatura=300,
+        presion=101325,
+        masa=1000,
+        composicion={"water": 0.5, "glucose": 0.5},
+    )
+    linea_1 = LineaMateria(
+        nombre="S1",
+        temperatura=300,
+        presion=101325,
+        fase=Fase.LIQUIDO,
+        composicion={"water": 0.5, "glucose": 0.5},
+        calidad=0,
+        flujo_masico=100,
     )
 
     planta = Planta("Planta Concentradora Biobío")
-
-    planta.añadir_nodo(evp_1)
-    planta.añadir_nodo(evp_2)
-    planta.añadir_conexion(evp_1.nombre, evp_2.nombre, linea=s1)
-    
-    # Si añadieras todas las corrientes de entrada y purga, aquí llamarías:
-    # planta.resolver_planta()
+    planta.añadir_nodo(evaporador_1)
+    planta.añadir_nodo(evaporador_2)
+    planta.añadir_conexion(evaporador_1.nombre, evaporador_2.nombre, linea=linea_1)
